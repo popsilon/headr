@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fs::File,
-    io::{self, BufRead, BufReader},
+    io::{self, BufRead, BufReader, Read},
 };
 
 use clap::{App, Arg};
@@ -31,8 +31,7 @@ pub fn get_args() -> MyResult<Config> {
                 .long("lines")
                 .value_name("LINES")
                 .multiple(false)
-                .default_value("10")
-                .conflicts_with("bytes"),
+                .default_value("10"), // .conflicts_with("bytes"),
         )
         .arg(
             Arg::with_name("bytes")
@@ -69,9 +68,22 @@ pub fn run(config: Config) -> MyResult<()> {
     for filename in config.files {
         match open(&filename) {
             Err(e) => eprintln!("{}: {}", filename, e),
-            Ok(file) => {
-                for line in file.lines().take(config.lines) {
-                    println!("{}", line?);
+            Ok(mut file) => {
+                if let Some(num_bytes) = config.bytes {
+                    let mut handle = file.take(num_bytes as u64);
+                    let mut buffer = vec![0; num_bytes];
+                    let bytes_read = handle.read(&mut buffer)?;
+                    print!("{}", String::from_utf8_lossy(&buffer[..bytes_read]));
+                } else {
+                    let mut line = String::new();
+                    for _ in 0..config.lines {
+                        let bytes = file.read_line(&mut line)?;
+                        if bytes == 0 {
+                            break;
+                        }
+                        print!("{}", line);
+                        line.clear();
+                    }
                 }
             }
         }
